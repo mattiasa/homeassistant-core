@@ -4,6 +4,7 @@ from typing import Any
 
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
+    ATTR_COLOR_TEMP_KELVIN,
     ATTR_TRANSITION,
     DOMAIN,
     ColorMode,
@@ -54,6 +55,19 @@ class LutronCasetaLight(LutronCasetaDeviceUpdatableEntity, LightEntity):
     _attr_supported_color_modes = {ColorMode.BRIGHTNESS}
     _attr_supported_features = LightEntityFeature.TRANSITION
 
+    def __init__(self, device, data):
+        """Init a button entity."""
+
+        super().__init__(device, data)
+        if device["type"] == "WhiteTune":
+            self._attr_supported_color_modes = self._attr_supported_color_modes | {
+                ColorMode.COLOR_TEMP
+            }
+            if min_color_temp_kelvin := device.get("min_color_temp_kelvin"):
+                self._attr_min_color_temp_kelvin = min_color_temp_kelvin
+            if max_color_temp_kelvin := device.get("max_color_temp_kelvin"):
+                self._attr_max_color_temp_kelvin = max_color_temp_kelvin
+
     @property
     def brightness(self):
         """Return the brightness of the light."""
@@ -68,11 +82,23 @@ class LutronCasetaLight(LutronCasetaDeviceUpdatableEntity, LightEntity):
             self.device_id, to_lutron_level(brightness), **args
         )
 
+    async def _set_color_temp_kelvin(self, color_temp_kelvin, **kwargs):
+        args = {}
+        if ATTR_TRANSITION in kwargs:
+            args["fade_time"] = timedelta(seconds=kwargs[ATTR_TRANSITION])
+
+        await self._smartbridge.set_color_temp_kelvin(
+            self.device_id, color_temp_kelvin, **args
+        )
+
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the light on."""
         brightness = kwargs.pop(ATTR_BRIGHTNESS, 255)
 
-        await self._set_brightness(brightness, **kwargs)
+        if (color_temp_kelvin := kwargs.pop(ATTR_COLOR_TEMP_KELVIN, None)) is not None:
+            await self._set_color_temp_kelvin(color_temp_kelvin, **kwargs)
+        else:
+            await self._set_brightness(brightness, **kwargs)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the light off."""
